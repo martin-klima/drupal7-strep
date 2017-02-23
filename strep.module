@@ -1,0 +1,241 @@
+<?php
+/**
+ * @file Structure report
+ *
+ * Gets content types, vocabularies and their fields and reports all information
+ * as one HTML page.
+ *
+ * Go to /admin/reports/strep to see report.
+ * 
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function strep_menu() {
+  $items['admin/reports/strep'] = array(
+    'title' => 'Structure report',
+    'description' => '',
+    'page callback' => 'strep_execute',
+    'page arguments' => array('node_admin_content'),
+    'access arguments' => array('access content overview'),
+    'weight' => 0,
+  );
+  return $items;
+}
+
+function strep_execute() {
+  $report = strep_get_content_types();
+  $report = strep_get_vocabularies($report);
+  if (module_exists('views')) {
+    $views_fields = strep_get_views_fields();
+  }
+  $report = strep_get_site_fields($report, $views_fields);
+
+  // kpr($report);
+
+  drupal_add_css(drupal_get_path('module', 'strep') . '/strep.css');
+  return render_report($report);
+}
+
+
+/**
+ * Get info about Content types.
+ *
+ * @return array
+ */
+function strep_get_content_types() {
+  $content_types = node_type_get_types();
+  // kpr($content_types);
+  $report = array();
+  foreach ($content_types as $machine_name => $content_type) {
+    $report['node'][$machine_name] = array(
+      'name' => $content_type->name,
+      'module' => $content_type->module,
+    );
+  }
+  return $report;
+}
+
+/**
+ * List vocabularies.
+ * @param array $report
+ * @return array
+ */
+function strep_get_vocabularies($report) {
+  $vocabularies = taxonomy_get_vocabularies();
+  // kpr($vocabularies);
+  if (count($vocabularies) > 1) {
+    foreach ($vocabularies as $vocabulary) {
+      $report['taxonomy_term'][$vocabulary->machine_name] = array(
+        'vid' => $vocabulary->vid,
+        'name' => $vocabulary->name,
+        'module' => $vocabulary->module,
+      );
+    }
+  }
+  return $report;
+}
+
+/**
+ * Wrapper for strep_get_fields().
+ *
+ * @param array $report
+ * @return array
+ */
+function strep_get_site_fields($report, $views_fields) {
+  $report = strep_get_fields($report, 'node', $views_fields);
+  $report = strep_get_fields($report, 'taxonomy_term', $views_fields);
+  return $report;
+}
+
+/**
+ * Get info about fields.
+ *
+ * @param array $report
+ * @param string $data_type
+ *    'node' or 'taxonomy_term'
+ * @param array $views_fields
+ * @return array
+ */
+function strep_get_fields($report, $data_type, $views_fields = array()) {
+  foreach ($report[$data_type] as $machine_name => $content_type) {
+
+    // Gather bundle information.
+    $instances = field_info_instances($data_type, $machine_name);
+    $field_types = field_info_field_types();
+    $widget_types = field_info_widget_types();
+
+    // $extra_fields = field_info_extra_fields('node', $machine_name, 'form');
+
+    // Fields.
+    foreach ($instances as $field_name => $field_instance) {
+      $field = field_info_field($field_instance['field_name']);
+
+      $report[$data_type][$machine_name]['fields'][$field_name] = array(
+        // 'name' => $field_instance['field_name'],
+        'label' => $field_instance['label'],
+        'type' => $field_types[$field['type']]['label'],
+        'module' => $field_types[$field['type']]['module'],
+        'widget' => $widget_types[$field_instance['widget']['type']]['label'],
+      );
+      $allowed_values = array();
+      // Term reference.
+      if ($field_types[$field['type']]['label'] == 'Term reference') {
+        foreach ($field['settings']['allowed_values'] as $key => $allowed_value) {
+          $allowed_values[$key] = $allowed_value['vocabulary'];
+        }
+        $allowed_values_string = implode(', ', $allowed_values);
+        $report[$data_type][$machine_name]['fields'][$field_name]['reference'] = $allowed_values_string;
+      }
+      // Entity Reference.
+      elseif ($field_types[$field['type']]['label'] == 'Entity Reference') {
+        foreach ($field['settings']['handler_settings']['target_bundles'] as $target_bundle) {
+          $allowed_values[] = $target_bundle;
+        }
+        $allowed_values_string = implode(', ', $allowed_values);
+        $report[$data_type][$machine_name]['fields'][$field_name]['reference'] = $allowed_values_string;
+      }
+
+      if (!empty($views_fields[$field_name])) {
+        $views_names = implode(', ', $views_fields[$field_name]);
+        $report[$data_type][$machine_name]['fields'][$field_name]['used in views'] = $views_names;
+      }
+
+    }
+  }
+  return $report;
+}
+
+/**
+ * List all instances of fields on any views.
+ *
+ * @return array
+ * @see views_ui_field_list()
+ */
+function strep_get_views_fields() {
+  $views = views_get_all_views();
+  $fields = array();
+  foreach ($views as $view) {
+    foreach ($view->display as $display_id => $display) {
+      if ($view->set_display($display_id)) {
+        foreach (views_object_types() as $type => $info) {
+          foreach ($view->get_items($type, $display_id) as $item) {
+            $data = views_fetch_data($item['table']);
+            if (isset($data[$item['field']]) && isset($data[$item['field']][$type])
+              && $data = $data[$item['field']][$type]
+            ) {
+              // The final check that we have a fieldapi field now.
+              if (isset($data['field_name'])) {
+                $fields[$data['field_name']][$view->name] = $view->name;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return $fields;
+
+  /*kpr($fields); die;
+
+  $header = array(t('Field name'), t('Used in'));
+  $rows = array();
+  foreach ($fields as $field_name => $views) {
+
+    $rows[$field_name]['data'][0] = check_plain($field_name);
+    foreach ($views as $view) {
+      $rows[$field_name]['data'][1][] = l($view, "admin/structure/views/view/$view");
+    }
+    $rows[$field_name]['data'][1] = implode(', ', $rows[$field_name]['data'][1]);
+  }*/
+}
+
+/**
+ * Render Report array as HTML.
+ *
+ * @param $report
+ * @return string
+ */
+function render_report($report) {
+  $output = '<div id="strep">';
+  foreach ($report as $report_type => $report_data) {
+    $output .= '<div class="type-' . $report_type . '">';
+    $output .= "<h1>" . $report_type . " structure</h1>";
+    if (!empty($report_data)) {
+      foreach ($report[$report_type] as $bundle => $bundle_data) {
+        $output .= '<ul class="bundle">';
+        $output .= '<li>';
+        $output .= "<h3>$report_type type: " . $bundle . "</h3>";
+        $output .= "<p>name: {$bundle_data['name']}, module: {$bundle_data['module']}</p>";
+        $output .= '</li>';
+        if (!empty($bundle_data['fields'])) {
+          $output .= '<h3>Fields:</h3>';
+          $output .= '<ul class="fields">';
+          foreach ($bundle_data['fields'] as $field_name => $field_data) {
+            $output .= '<li class="field">';
+            $output .= "<h4>$field_name</h4>";
+            $output .= "<ul>";
+            foreach ($field_data as $field_data_key => $field_data_value) {
+              $output .= '<li class="field-data' . _get_css_class($field_data_key, 'key') . '">';
+              $output .= '<span class="field-key">' . $field_data_key . '</span>: <span class="field-value">' . $field_data_value;
+              $output .= '</li>';
+            }
+            $output .= " </ul > ";
+            $output .= '</li>';
+          }
+          $output .= "</ul > ";
+        }
+        $output .= "</ul > ";
+      }
+    }
+    $output .= '</div>';
+  }
+  $output .= '</div>';
+  return $output;
+}
+
+function _get_css_class($string, $key) {
+  return ' ' . $key . '-' . drupal_strtolower(str_replace(" ", "-", $string));
+}

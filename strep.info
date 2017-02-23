@@ -1,0 +1,9 @@
+name = Structure report
+description = Report D7 data structure.
+core = 7.x
+package = Development
+
+dependencies[] = node
+dependencies[] = taxonomy
+
+version = "7.x-0.1-alfa"

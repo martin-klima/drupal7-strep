@@ -1,0 +1,50 @@
+/* STREP CSS style */
+
+#strep .type-node {
+    border-left: 5px solid #1914cc;
+}
+#strep .type-taxonomy_term {
+    border-left: 5px solid #e7da00;
+}
+
+#strep h1 {
+    margin-top: 2em;
+    text-transform: uppercase;
+    padding-left: 1em;
+}
+
+#strep ul.bundle {
+    border: 1px dotted #ccc;
+    list-style: none;
+    padding: 0.5em;
+    margin-top: 1em;
+}
+
+#strep ul.bundle > li > h3 {
+    background-color: #0f830f;
+    padding: 0.5em;
+    margin: -0.5em;
+    color: #fff;
+}
+
+#strep .type-taxonomy_term ul.bundle > li > h3 {
+    /*background-color: #dd7300;*/
+}
+
+#strep ul.fields li.field {
+    display: inline-block;
+    border: 1px dotted #ccc;
+    padding: 0.5em;
+    margin: 0.5em;
+}
+
+#strep ul.fields li.field h4 {
+    margin: -0.5em -0.5em auto;
+    background-color: #088cc9;
+    color: #fff;
+    padding: 0.3em;
+}
+
+#strep .field-data.key-label .field-value {
+    font-weight: bold;
+}
